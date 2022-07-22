@@ -2,9 +2,11 @@ use super::token::Token;
 use super::Lexer;
 use super::token::SourceLocation;
 
-pub(crate) const ESCAPE_CHAR: char = '\\';
-pub(crate) const CHAR_LITERAL_STARTSTOP: char = '\'';
-pub(crate) const STR_LITERAL_STARTSTOP: char = '\"';
+
+pub(crate) const SINGLE_QUOTE_CHAR: char = '\'';
+pub(crate) const DOUBLE_QUOTE_CHAR: char = '\"';
+pub(crate) const SLASH_CHAR: char = '\\';
+pub(crate) const ESCAPE_CHAR: char = SLASH_CHAR;
 
 #[derive(Debug)]
 #[derive(PartialEq)]
@@ -24,8 +26,8 @@ pub(crate) enum Mode{
 impl Mode {
     fn open_close_char(self) -> char{
         match self{
-            Char => CHAR_LITERAL_STARTSTOP,
-            Str => '"'
+            Char => SINGLE_QUOTE_CHAR,
+            Str => DOUBLE_QUOTE_CHAR
         }
     }
 }
@@ -42,8 +44,8 @@ impl LiteralMode for char{
 
     fn literal_mode(self) -> Option<Mode>{
         match self{
-            CHAR_LITERAL_STARTSTOP => Some(Mode::Char),
-            STR_LITERAL_STARTSTOP => Some(Mode::Str),
+            SINGLE_QUOTE_CHAR => Some(Mode::Char),
+            DOUBLE_QUOTE_CHAR => Some(Mode::Str),
             _ => None
         }
     }
@@ -53,9 +55,9 @@ fn escaped_charater(c: char, m: Mode ) -> Option<char> {
     return match c {
         'r' => Some('\r'),
         'n' => Some('\n'),
-        '\\' => Some('\\'),
-        '\'' if m == Mode::Char => Some('\''),
-        '"' if m == Mode::Str => Some('"'),
+        SLASH_CHAR => Some(SLASH_CHAR),
+        SINGLE_QUOTE_CHAR if m == Mode::Char => Some(c),
+        DOUBLE_QUOTE_CHAR if m == Mode::Str => Some(c),
         _ => None
     }
 }
@@ -79,9 +81,9 @@ fn lex_string_literal(l: &mut Lexer<'_>) -> Result<Token,LiteralLexFailureReason
         }
         l.advance_pos();
         match next.unwrap() {
-            STR_LITERAL_STARTSTOP => {
+            DOUBLE_QUOTE_CHAR => {
                 if escape {
-                    literal.push(STR_LITERAL_STARTSTOP);
+                    literal.push(DOUBLE_QUOTE_CHAR);
                     escape = false;
                 } else {
                     return Ok(Token::StringLiteral(l.location(), literal.into_iter().collect()))
@@ -108,15 +110,15 @@ fn lex_string_literal(l: &mut Lexer<'_>) -> Result<Token,LiteralLexFailureReason
 }
 
 fn lex_character_literal(l: &mut Lexer<'_>) -> Result<Token,LiteralLexFailureReason>{ 
-    let skip_bad_char = |c: char| c != '\'' && !c.is_whitespace();
+    let skip_bad_char = |c: char| c != SINGLE_QUOTE_CHAR && !c.is_whitespace();
     let next = l.peek_next();
     l.advance_pos();
     match lex_character_literal_core(l) {
         Ok(token) => match next {
-            Some('\'') => return Ok(token),
+            Some(SINGLE_QUOTE_CHAR) => return Ok(token),
             Some(_) => {
                 l.skip_while(skip_bad_char);
-                return Err(LiteralLexFailureReason::UnclosedLiteral(l.location()))
+                return Err(LiteralLexFailureReason::InvalidCharLiteral(l.location()))
             },
             None => return Err(LiteralLexFailureReason::UnclosedLiteral(l.location()))
         },
